@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+@layer components {
+  .field-input {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-400;
+  }
+  .field-input-invalid {
+    @apply border-red-400 focus:border-red-500 focus:ring-red-500/15 dark:border-red-500;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800;
+  }
+  .link-brand {
+    @apply font-medium text-brand-700 hover:underline dark:text-brand-300;
+  }
+  .table-base {
+    @apply w-full text-left text-sm;
+  }
+  .table-base thead {
+    @apply border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:border-slate-800 dark:bg-slate-950/40;
+  }
+  .table-base th {
+    @apply px-5 py-3;
+  }
+  .table-base td {
+    @apply px-5 py-3.5 text-slate-700 dark:text-slate-200;
+  }
+  .table-base tbody tr {
+    @apply border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50/70 dark:border-slate-800 dark:hover:bg-slate-800/40;
+  }
+  .card-surface {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900;
+  }
+}
+
+@keyframes dash-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dash-enter {
+  animation: dash-fade-up 0.45s ease-out both;
+}
+
+.dash-enter > * {
+  animation: dash-fade-up 0.5s ease-out both;
+}
+
+.dash-enter > *:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.dash-enter > *:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.dash-enter > *:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.dash-enter > *:nth-child(4) {
+  animation-delay: 0.14s;
+}
+.dash-enter > *:nth-child(5) {
+  animation-delay: 0.18s;
+}
