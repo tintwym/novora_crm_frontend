@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { createCompanySchema } from '@/shared';
+import { Permission, createCompanySchema } from '@/shared';
 import { companiesApi, type Account } from './companiesApi';
+import { usePermission } from '../../hooks/usePermission';
 import { ApiClientError } from '../../utils/api';
 import { apiFieldErrors, validateForm, type FieldErrors } from '../../utils/formErrors';
 import {
@@ -10,12 +11,26 @@ import {
   ErrorAlert,
   ExportButton,
   Field,
+  ImportCsvButton,
   PageHeader,
   Panel,
   SearchInput,
 } from '../../components/ui';
 import { IconCompanies } from '../../components/icons/Icons';
-import type { CsvColumn } from '../../utils/csv';
+import { parseCsv, type CsvColumn } from '../../utils/csv';
+
+function companiesFromCsv(text: string) {
+  return parseCsv(text)
+    .map((row) => ({
+      name: row.name || row.company || row.account || '',
+      industry: row.industry || '',
+      size: row.size || '',
+      email: row.email || '',
+      phone: row.phone || '',
+      website: row.website || '',
+    }))
+    .filter((r) => r.name);
+}
 
 const COMPANY_CSV: CsvColumn<Account>[] = [
   { header: 'Name', value: (a) => a.name },
@@ -43,8 +58,10 @@ export function CompaniesPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [showForm, setShowForm] = useState(false);
+  const canImport = usePermission(Permission.IMPORT_COMPANIES);
   const [form, setForm] = useState({
     name: '',
     industry: '',
@@ -103,6 +120,40 @@ export function CompaniesPage() {
     setFieldErrors({});
   }
 
+  async function onImportFile(file: File) {
+    try {
+      const text = await file.text();
+      const rows = companiesFromCsv(text);
+      setNotice(null);
+      if (!rows.length) {
+        setError('CSV needs a header row and at least one company with a name');
+        return;
+      }
+      const result = await companiesApi.import(rows);
+      const plural = (n: number) => `${n} compan${n === 1 ? 'y' : 'ies'}`;
+      const skippedNote = result.skipped.length
+        ? ` Skipped ${plural(result.skipped.length)} that already exist.`
+        : '';
+      if (result.errors.length) {
+        const details = result.errors
+          .slice(0, 3)
+          .map((e) => `row ${e.row}: ${e.message}`)
+          .join('; ');
+        setError(
+          `Imported ${plural(result.imported)}.${skippedNote} ${result.errors.length} row(s) failed — ${details}${
+            result.errors.length > 3 ? '…' : ''
+          }`,
+        );
+      } else {
+        setError(null);
+        setNotice(`Imported ${plural(result.imported)}.${skippedNote}`);
+      }
+      await load(search);
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : 'Import failed');
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -110,11 +161,18 @@ export function CompaniesPage() {
         description="CRM accounts linked to your contacts and deals"
         actions={
           <>
+            {canImport && <ImportCsvButton onFile={onImportFile} />}
             <ExportButton name="companies" rows={accounts} columns={COMPANY_CSV} />
             <Button onClick={toggleForm}>{showForm ? 'Cancel' : 'Add company'}</Button>
           </>
         }
       />
+
+      {notice && (
+        <p role="status" className="text-sm text-brand-700 dark:text-brand-300">
+          {notice}
+        </p>
+      )}
 
       {showForm && (
         <Panel title="New company" description="Only the name is required.">
@@ -214,6 +272,12 @@ export function CompaniesPage() {
           },
         ]}
       />
+
+      {canImport && (
+        <p className="text-xs text-slate-500">
+          CSV headers: <span className="font-mono">name, industry, size, email, phone, website</span>
+        </p>
+      )}
     </div>
   );
 }

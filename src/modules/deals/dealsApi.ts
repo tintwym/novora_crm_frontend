@@ -70,6 +70,12 @@ export interface ForecastResponse {
   }>;
 }
 
+export interface ImportResult {
+  imported: number;
+  errors: { row: number; message: string }[];
+  skipped: { row: number; name: string | null; reason: string }[];
+}
+
 export const dealsApi = {
   pipeline: () => api.get<PipelineResponse>('/deals/pipeline'),
   forecast: () => api.get<ForecastResponse>('/deals/forecast'),
@@ -80,6 +86,8 @@ export const dealsApi = {
   updateStage: (id: string, stage: DealStage) =>
     api.patch<Deal>(`/deals/${id}/stage`, { stage }),
   remove: (id: string) => api.delete<null>(`/deals/${id}`),
+  import: (deals: Record<string, unknown>[], skipDuplicates = true) =>
+    api.post<ImportResult>('/deals/import', { deals, skipDuplicates }),
   addActivity: (id: string, data: Record<string, unknown>) =>
     api.post(`/deals/${id}/activities`, data),
   addAttachment: (id: string, data: { fileName: string; fileUrl: string }) =>

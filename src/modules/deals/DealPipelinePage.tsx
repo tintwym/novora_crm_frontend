@@ -1,17 +1,44 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { DEAL_STAGES, createDealSchema, type DealStage } from '@/shared';
+import { DEAL_STAGES, Permission, createDealSchema, type DealStage } from '@/shared';
 import { LEAD_SOURCES, SOURCE_LABEL, STAGE_LABEL, sourceLabel } from '../../utils/labels';
 import { dealsApi, type Deal, type PipelineResponse } from './dealsApi';
 import { automationNotice } from '../automations/automationsApi';
 import { contactsApi, type Contact } from '../contacts/contactsApi';
 import { companiesApi, type Account } from '../companies/companiesApi';
+import { usePermission } from '../../hooks/usePermission';
 import { ApiClientError } from '../../utils/api';
 import { apiFieldErrors, validateForm, type FieldErrors } from '../../utils/formErrors';
-import { Button, Card, ErrorAlert, ExportButton, Field, LoadingState, PageHeader, Panel } from '../../components/ui';
+import {
+  Button,
+  Card,
+  ErrorAlert,
+  ExportButton,
+  Field,
+  ImportCsvButton,
+  LoadingState,
+  PageHeader,
+  Panel,
+} from '../../components/ui';
 import { IconChart } from '../../components/icons/Icons';
 import { initials, formatCurrency } from '../../utils/format';
-import { csvDate, type CsvColumn } from '../../utils/csv';
+import { csvDate, parseCsv, type CsvColumn } from '../../utils/csv';
+
+function dealsFromCsv(text: string) {
+  return parseCsv(text)
+    .map((row) => ({
+      title: row.title || row.name || row.deal || '',
+      value: row.value || row.amount || '',
+      stage: row.stage || '',
+      probability: row['probability %'] || row.probability || '',
+      accountName: row.company || row.account || row.accountname || '',
+      contactName: row.contact || row.contactname || '',
+      contactEmail: row.contactemail || row.email || '',
+      source: row.source || '',
+      closeDate: row['close date'] || row.closedate || row.close_date || '',
+    }))
+    .filter((r) => r.title);
+}
 
 const DEAL_CSV: CsvColumn<Deal>[] = [
   { header: 'Title', value: (d) => d.title },
@@ -45,6 +72,7 @@ export function DealPipelinePage() {
   const [loading, setLoading] = useState(true);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const canImport = usePermission(Permission.IMPORT_DEALS);
   const [form, setForm] = useState({
     title: '',
     value: '0',
@@ -134,6 +162,40 @@ export function DealPipelinePage() {
     }
   }
 
+  async function onImportFile(file: File) {
+    try {
+      const text = await file.text();
+      const rows = dealsFromCsv(text);
+      setNotice(null);
+      if (!rows.length) {
+        setError('CSV needs a header row and at least one deal with a title');
+        return;
+      }
+      const result = await dealsApi.import(rows);
+      const plural = (n: number) => `${n} deal${n === 1 ? '' : 's'}`;
+      const skippedNote = result.skipped.length
+        ? ` Skipped ${plural(result.skipped.length)} that already exist.`
+        : '';
+      if (result.errors.length) {
+        const details = result.errors
+          .slice(0, 3)
+          .map((e) => `row ${e.row}: ${e.message}`)
+          .join('; ');
+        setError(
+          `Imported ${plural(result.imported)}.${skippedNote} ${result.errors.length} row(s) failed — ${details}${
+            result.errors.length > 3 ? '…' : ''
+          }`,
+        );
+      } else {
+        setError(null);
+        setNotice(`Imported ${plural(result.imported)}.${skippedNote}`);
+      }
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : 'Import failed');
+    }
+  }
+
   async function onDrop(stage: DealStage) {
     if (!draggingId) return;
     const id = draggingId;
@@ -152,6 +214,7 @@ export function DealPipelinePage() {
               <IconChart size={16} />
               Forecast
             </Link>
+            {canImport && <ImportCsvButton onFile={onImportFile} />}
             <ExportButton
               name="deals"
               rows={pipeline?.columns.flatMap((c) => c.deals) ?? []}
@@ -407,6 +470,13 @@ export function DealPipelinePage() {
             ),
           )}
         </div>
+      )}
+
+      {canImport && (
+        <p className="text-xs text-slate-500">
+          CSV headers:{' '}
+          <span className="font-mono">title, stage, value, company, contact, email, source, close date</span>
+        </p>
       )}
     </div>
   );

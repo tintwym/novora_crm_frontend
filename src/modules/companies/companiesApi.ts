@@ -15,6 +15,12 @@ export interface Account {
   deals?: Array<{ id: string; title: string; value: string | number; stage: string; closeDate: string | null }>;
 }
 
+export interface ImportResult {
+  imported: number;
+  errors: { row: number; message: string }[];
+  skipped: { row: number; name: string | null; reason: string }[];
+}
+
 export const companiesApi = {
   list: (search?: string) =>
     api.get<Account[]>(`/companies${search ? `?search=${encodeURIComponent(search)}` : ''}`),
@@ -22,4 +28,6 @@ export const companiesApi = {
   create: (data: Partial<Account> & { name: string }) => api.post<Account>('/companies', data),
   update: (id: string, data: Partial<Account>) => api.patch<Account>(`/companies/${id}`, data),
   remove: (id: string) => api.delete<null>(`/companies/${id}`),
+  import: (companies: Record<string, unknown>[], skipDuplicates = true) =>
+    api.post<ImportResult>('/companies/import', { companies, skipDuplicates }),
 };

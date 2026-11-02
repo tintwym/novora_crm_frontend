@@ -10,4 +10,5 @@ export { DataTable } from './DataTable';
 export { Modal } from './Modal';
 export { SearchInput } from './SearchInput';
 export { ExportButton } from './ExportButton';
+export { ImportCsvButton } from './ImportCsvButton';
 export { SourcePicker } from './SourcePicker';
