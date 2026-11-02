@@ -8,6 +8,8 @@ export interface TeamUser {
   role: Role;
   companyId: string;
   isActive: boolean;
+  /** Kept in step with Novora HRMS (role, name and access follow the employee record). */
+  hrmsLinked?: boolean;
   createdAt: string;
   updatedAt: string;
 }
