@@ -23,12 +23,14 @@ export const activitiesApi = {
     contactId?: string;
     dealId?: string;
     completed?: boolean;
+    mine?: boolean;
   }) => {
     const q = new URLSearchParams();
     if (params?.type) q.set('type', params.type);
     if (params?.contactId) q.set('contactId', params.contactId);
     if (params?.dealId) q.set('dealId', params.dealId);
     if (params?.completed !== undefined) q.set('completed', String(params.completed));
+    if (params?.mine !== undefined) q.set('mine', String(params.mine));
     const qs = q.toString();
     return api.get<Activity[]>(`/activities${qs ? `?${qs}` : ''}`);
   },
