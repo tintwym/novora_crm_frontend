@@ -7,6 +7,7 @@ import { ApiClientError } from '../../utils/api';
 import { formatRole } from '../../utils/format';
 import { Button, Field, Modal, PageHeader, Panel } from '../../components/ui';
 import { sampleDataApi, type SampleDataStatus } from './sampleDataApi';
+import { hrmsApi, type HrmsStatus } from './hrmsApi';
 
 const SIZES = ['1-10', '11-50', '51-200', '201-500', '500+'];
 
@@ -468,6 +469,243 @@ function EmailSection() {
   );
 }
 
+function splitCodes(raw: string) {
+  return raw
+    .split(',')
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function when(iso?: string | null) {
+  return iso ? new Date(iso).toLocaleString() : 'Never';
+}
+
+const SYNC_TONE: Record<string, string> = {
+  OK: 'text-brand-700 dark:text-brand-300',
+  PARTIAL: 'text-amber-700 dark:text-amber-300',
+  FAILED: 'text-red-600 dark:text-red-400',
+};
+
+function HrmsSection() {
+  const [data, setData] = useState<HrmsStatus | null>(null);
+  const [code, setCode] = useState('');
+  const [sales, setSales] = useState('');
+  const [support, setSupport] = useState('');
+  const [busy, setBusy] = useState<'connect' | 'save' | 'sync' | 'disconnect' | null>(null);
+  const [justConnected, setJustConnected] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [notes, setNotes] = useState<string[]>([]);
+  const [status, setStatus] = useState<Status>(null);
+
+  function apply(next: HrmsStatus) {
+    setData(next);
+    setSales((next.salesDepartmentCodes ?? []).join(', '));
+    setSupport((next.supportDepartmentCodes ?? []).join(', '));
+  }
+
+  useEffect(() => {
+    hrmsApi
+      .status()
+      .then(apply)
+      .catch((err) => setStatus({ kind: 'error', message: errorMessage(err, 'Could not check the HRMS connection') }));
+  }, []);
+
+  async function run(kind: NonNullable<typeof busy>, action: () => Promise<HrmsStatus>, ok: (s: HrmsStatus) => string) {
+    setBusy(kind);
+    setStatus(null);
+    try {
+      const next = await action();
+      apply(next);
+      setStatus({ kind: next.summary?.status === 'FAILED' ? 'error' : 'ok', message: ok(next) });
+      return next;
+    } catch (err) {
+      setStatus({ kind: 'error', message: errorMessage(err, 'Something went wrong. Please try again.') });
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function connect(e: FormEvent) {
+    e.preventDefault();
+    const next = await run('connect', () => hrmsApi.connect(code.trim()), (s) =>
+      `Connected to ${s.hrmsOrganizationName ?? 'Novora HRMS'}.`,
+    );
+    if (next) {
+      setCode('');
+      setJustConnected(true);
+    }
+  }
+
+  async function saveCodes(e: FormEvent) {
+    e.preventDefault();
+    await run(
+      'save',
+      () => hrmsApi.updateSettings({ salesDepartmentCodes: splitCodes(sales), supportDepartmentCodes: splitCodes(support) }),
+      () => 'Department mapping saved. Click Sync now to apply it to everyone.',
+    );
+  }
+
+  async function sync() {
+    const next = await run('sync', hrmsApi.sync, (s) => s.summary?.message ?? 'Sync finished.');
+    setNotes(next?.summary?.notes ?? []);
+    if (next) setJustConnected(false);
+  }
+
+  async function disconnect() {
+    const next = await run('disconnect', hrmsApi.disconnect, () =>
+      'Disconnected. Existing CRM accounts were not changed.',
+    );
+    if (next) {
+      setConfirmOpen(false);
+      setJustConnected(false);
+      setNotes([]);
+    }
+  }
+
+  return (
+    <Panel
+      title="Novora HRMS"
+      description="Give your sales and support staff CRM accounts automatically, and remove access when they leave."
+    >
+      {data === null ? (
+        <p className="text-sm text-slate-500">Checking…</p>
+      ) : !data.available ? (
+        <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+          <p className="font-medium text-slate-800 dark:text-slate-100">The HRMS connection isn't turned on for this server</p>
+          <p>
+            Your Novora administrator needs to set{' '}
+            <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">HRMS_SYNC_ENABLED</code>,{' '}
+            <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">HRMS_BASE_URL</code> and{' '}
+            <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">HRMS_INTEGRATION_SECRET</code> on the API,
+            then restart it.
+          </p>
+        </div>
+      ) : !data.connected ? (
+        <form onSubmit={connect} noValidate className="space-y-4">
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+            <li>
+              In Novora HRMS, an HR admin opens <span className="font-medium">Settings → Integrations</span> and creates a
+              connection code.
+            </li>
+            <li>Enter the code here within 15 minutes. Each code works once.</li>
+          </ol>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="sm:w-56">
+              <Field label="Connection code" htmlFor="hrms-code">
+                <Field.Input
+                  id="hrms-code"
+                  placeholder="ABCD-EFGH"
+                  autoComplete="off"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                />
+              </Field>
+            </div>
+            <div className="sm:mb-4">
+              <Button type="submit" disabled={busy !== null || code.trim().length < 8}>
+                {busy === 'connect' ? 'Connecting…' : 'Connect'}
+              </Button>
+            </div>
+          </div>
+          <StatusLine status={status} />
+        </form>
+      ) : (
+        <div className="space-y-5">
+          <div className="grid gap-3 text-sm sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-slate-500">Connected to</p>
+              <p className="font-medium text-slate-800 dark:text-slate-100">
+                {data.hrmsOrganizationName ?? 'Novora HRMS'}
+              </p>
+              <p className="text-xs text-slate-500">since {when(data.connectedAt)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Teammates linked to HRMS</p>
+              <p className="font-medium text-slate-800 dark:text-slate-100">{data.linkedUsers ?? 0}</p>
+              <p className="text-xs text-slate-500">Last change received {when(data.lastEventAt)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Last full sync</p>
+              <p className="font-medium text-slate-800 dark:text-slate-100">{when(data.lastSyncAt)}</p>
+              {data.lastSyncMessage && (
+                <p className={`text-xs ${SYNC_TONE[data.lastSyncStatus ?? ''] ?? 'text-slate-500'}`}>
+                  {data.lastSyncMessage}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {justConnected && (
+            <p className="rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800 dark:border-brand-900 dark:bg-brand-950 dark:text-brand-200">
+              Check the department codes below, then click <span className="font-medium">Sync now</span> to import your
+              team. Everyone who gets a new account receives an email invite.
+            </p>
+          )}
+
+          <form onSubmit={saveCodes} noValidate className="grid gap-x-4 sm:grid-cols-2">
+            <Field
+              label="Sales department codes"
+              htmlFor="hrms-sales"
+              hint="Managers and above become Sales managers; everyone else becomes a Sales rep"
+            >
+              <Field.Input id="hrms-sales" value={sales} onChange={(e) => setSales(e.target.value)} />
+            </Field>
+            <Field label="Support department codes" htmlFor="hrms-support" hint="Everyone here becomes a Support agent">
+              <Field.Input id="hrms-support" value={support} onChange={(e) => setSupport(e.target.value)} />
+            </Field>
+            <p className="-mt-1 mb-4 text-xs text-slate-500 sm:col-span-2">
+              Use the codes from Novora HRMS (Settings → Departments), separated by commas. People in other departments
+              don't get a CRM account. Admins keep their role and are only deactivated when they leave the company.
+            </p>
+            <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+              <Button type="submit" variant="secondary" disabled={busy !== null}>
+                {busy === 'save' ? 'Saving…' : 'Save mapping'}
+              </Button>
+              <Button type="button" disabled={busy !== null || data.syncing} onClick={() => void sync()}>
+                {busy === 'sync' || data.syncing ? 'Syncing…' : 'Sync now'}
+              </Button>
+              <Button type="button" variant="danger" disabled={busy !== null} onClick={() => setConfirmOpen(true)}>
+                Disconnect
+              </Button>
+            </div>
+          </form>
+
+          {busy === 'sync' && (
+            <p className="text-xs text-slate-500">This can take up to a minute if Novora HRMS is waking up.</p>
+          )}
+          <StatusLine status={status} />
+          {notes.length > 0 && (
+            <ul className="list-disc space-y-0.5 pl-5 text-xs text-slate-500">
+              {notes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      <Modal
+        open={confirmOpen}
+        onClose={() => {
+          if (busy === null) setConfirmOpen(false);
+        }}
+        title="Disconnect Novora HRMS?"
+        description="New hires and leavers in HRMS will stop updating the CRM. Existing accounts stay exactly as they are, and you can reconnect later with a new code."
+      >
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="secondary" disabled={busy !== null} onClick={() => setConfirmOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="danger" disabled={busy !== null} onClick={() => void disconnect()}>
+            {busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
+          </Button>
+        </div>
+      </Modal>
+    </Panel>
+  );
+}
+
 export function SettingsPage() {
   const canManage = usePermission(Permission.MANAGE_USERS);
   return (
@@ -477,6 +715,7 @@ export function SettingsPage() {
       <PasswordSection />
       <WorkspaceSection />
       {canManage && <EmailSection />}
+      {canManage && <HrmsSection />}
       {canManage && <SampleDataSection />}
     </div>
   );

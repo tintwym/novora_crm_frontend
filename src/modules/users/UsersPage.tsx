@@ -310,7 +310,17 @@ export function UsersPage() {
                   {initials(u.name)}
                 </div>
                 <div className="min-w-0">
-                  <p className="font-medium text-slate-900 dark:text-white">{u.name}</p>
+                  <p className="font-medium text-slate-900 dark:text-white">
+                    {u.name}
+                    {u.hrmsLinked && (
+                      <span
+                        title="Synced from Novora HRMS: changes to this person in HRMS update their account here"
+                        className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                      >
+                        HRMS
+                      </span>
+                    )}
+                  </p>
                   <p className="truncate text-xs text-slate-500">{u.email}</p>
                 </div>
               </div>
